@@ -1,0 +1,15 @@
+yfinance>=0.2.61
+fastapi
+uvicorn 
+pandas==2.2.3
+requests==2.31.0
+beautifulsoup4==4.12.3
+pydantic==2.11.3
+python-dotenv==1.1.0
+PyYAML==6.0.2
+agno==0.1.0
+google-api-core==2.15.0
+phi==0.6.7
+google-generativeai
+tabulate
+uvicorn
