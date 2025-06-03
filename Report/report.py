@@ -6,6 +6,9 @@ import time
 from google.api_core.exceptions import TooManyRequests
 import logging
 import pandas as pd
+import asyncio
+import concurrent.futures
+from threading import Lock
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -13,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Set environment variable for Google API
 os.environ["GOOGLE_API_KEY"] = "AIzaSyDdtq0l5VfOLUi7wSlH3IddSwwSkoyX5nM"
+
+# Thread lock for shared resources
+data_lock = Lock()
 
 def compare_stocks(symbols):
     try:
@@ -164,6 +170,37 @@ def get_company_analysis(symbol):
         logger.error(f"Error in company analysis for {symbol}: {str(e)}")
         return f"Error analyzing {symbol}: {str(e)}"
 
+def get_all_company_analyses(symbols):
+    """Get company analyses for all symbols in parallel"""
+    try:
+        logger.info(f"Starting parallel company analyses for {symbols}")
+        
+        # Use ThreadPoolExecutor to run company analyses in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(symbols), 5)) as executor:
+            # Submit all tasks
+            future_to_symbol = {
+                executor.submit(get_company_analysis, symbol): symbol 
+                for symbol in symbols
+            }
+            
+            # Collect results
+            company_analyses = {}
+            for future in concurrent.futures.as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    analysis = future.result(timeout=60)  # 60 second timeout per analysis
+                    company_analyses[symbol] = analysis
+                    logger.info(f"Company analysis completed for {symbol}")
+                except Exception as e:
+                    logger.error(f"Error in company analysis for {symbol}: {str(e)}")
+                    company_analyses[symbol] = f"Error analyzing {symbol}: {str(e)}"
+        
+        return company_analyses
+    
+    except Exception as e:
+        logger.error(f"Error in parallel company analyses: {str(e)}")
+        return {symbol: f"Error analyzing {symbol}: {str(e)}" for symbol in symbols}
+
 # Stock Strategist Agent
 stock_strategist = Agent(
     model=Gemini(id="models/gemini-2.0-flash-001"),
@@ -171,16 +208,16 @@ stock_strategist = Agent(
     markdown=True
 )
 
-def get_stock_recommendations(symbols):
+def get_stock_recommendations(symbols, market_analysis=None, company_data=None):
     try:
         logger.info(f"Starting stock recommendations for {symbols}")
         
-        # Get individual analyses but limit content
-        market_analysis = get_market_analysis(symbols)
-        company_data = {}
+        # Use provided data or get fresh data (for backwards compatibility)
+        if market_analysis is None:
+            market_analysis = get_market_analysis(symbols)
         
-        for symbol in symbols:
-            company_data[symbol] = get_company_analysis(symbol)
+        if company_data is None:
+            company_data = get_all_company_analyses(symbols)
         
         prompt = (
             f"Based on the following analysis, provide investment recommendations for these stocks: {', '.join(symbols)}\n\n"
@@ -209,6 +246,61 @@ def get_stock_recommendations(symbols):
         logger.error(f"Error in stock recommendations: {str(e)}")
         return f"Error generating recommendations: {str(e)}"
 
+# Parallel execution function
+def run_agents_in_parallel(symbols):
+    """Run market analysis, company research, and stock strategist in parallel"""
+    try:
+        logger.info(f"Starting parallel execution for {symbols}")
+        
+        # Results dictionary to store outputs
+        results = {}
+        
+        # Use ThreadPoolExecutor to run the three main tasks in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            # Submit the three main tasks
+            market_future = executor.submit(get_market_analysis, symbols)
+            company_future = executor.submit(get_all_company_analyses, symbols)
+            
+            # Wait for market analysis and company data to complete
+            # before starting stock recommendations (since it depends on both)
+            market_analysis = market_future.result(timeout=120)  # 2 minutes timeout
+            company_data = company_future.result(timeout=180)    # 3 minutes timeout
+            
+            # Now run stock recommendations with the completed data
+            recommendations_future = executor.submit(
+                get_stock_recommendations, 
+                symbols, 
+                market_analysis, 
+                company_data
+            )
+            
+            # Collect final result
+            stock_recommendations = recommendations_future.result(timeout=120)  # 2 minutes timeout
+            
+            results = {
+                'market_analysis': market_analysis,
+                'company_data': company_data,
+                'stock_recommendations': stock_recommendations
+            }
+        
+        logger.info("Parallel execution completed successfully")
+        return results
+    
+    except concurrent.futures.TimeoutError:
+        logger.error("Timeout occurred during parallel execution")
+        return {
+            'market_analysis': "Timeout error in market analysis",
+            'company_data': {symbol: f"Timeout error for {symbol}" for symbol in symbols},
+            'stock_recommendations': "Timeout error in stock recommendations"
+        }
+    except Exception as e:
+        logger.error(f"Error in parallel execution: {str(e)}")
+        return {
+            'market_analysis': f"Error in market analysis: {str(e)}",
+            'company_data': {symbol: f"Error analyzing {symbol}: {str(e)}" for symbol in symbols},
+            'stock_recommendations': f"Error in recommendations: {str(e)}"
+        }
+
 # Team Lead Agent
 team_lead = Agent(
     model=Gemini(id="gemini-2.0-flash-001"),
@@ -225,18 +317,20 @@ def get_final_investment_report(symbols):
     try:
         logger.info(f"Starting final report generation for {symbols}")
         
-        # Get all analyses
-        market_analysis = get_market_analysis(symbols)
-        logger.info("Market analysis completed")
+        # Run all agents in parallel
+        parallel_results = run_agents_in_parallel(symbols)
         
+        # Extract results
+        market_analysis = parallel_results['market_analysis']
+        company_data = parallel_results['company_data']
+        stock_recommendations = parallel_results['stock_recommendations']
+        
+        logger.info("All parallel analyses completed")
+        
+        # Format company analyses
         company_analyses = []
-        for symbol in symbols:
-            analysis = get_company_analysis(symbol)
+        for symbol, analysis in company_data.items():
             company_analyses.append(f"**{symbol}**: {analysis}")
-        logger.info("Company analyses completed")
-        
-        stock_recommendations = get_stock_recommendations(symbols)
-        logger.info("Stock recommendations completed")
 
         # Create the complete report by combining all sections
         complete_report = f"""# Stock Investment Report for {', '.join(symbols)}
@@ -261,7 +355,7 @@ Based on the comprehensive analysis above, here is the investment ranking:
         table_prompt = (
             f"Based on the following complete analysis, create ONLY the summary table rows for the investment ranking.\n\n"
             f"Market Analysis: {market_analysis[:500]}...\n\n"
-            f"Company Data: {str(company_analyses)[:500]}...\n\n"
+            f"Company Data: {str(list(company_data.values()))[:500]}...\n\n"
             f"Recommendations: {stock_recommendations[:500]}...\n\n"
             f"For each stock ({', '.join(symbols)}), provide one table row with:\n"
             f"- Stock ticker\n"
@@ -283,3 +377,29 @@ Based on the comprehensive analysis above, here is the investment ranking:
     except Exception as e:
         logger.error(f"Error generating final report: {str(e)}")
         return f"Error generating final investment report: {str(e)}"
+
+# Utility function to run analysis with timing
+def analyze_stocks_with_timing(symbols):
+    """Wrapper function that includes timing information"""
+    start_time = time.time()
+    
+    logger.info(f"Starting stock analysis for: {symbols}")
+    logger.info("=" * 50)
+    
+    try:
+        report = get_final_investment_report(symbols)
+        
+        end_time = time.time()
+        execution_time = round(end_time - start_time, 2)
+        
+        logger.info("=" * 50)
+        logger.info(f"Analysis completed in {execution_time} seconds")
+        
+        return f"{report}\n\n---\n**Execution Time:** {execution_time} seconds (with parallel processing)"
+        
+    except Exception as e:
+        end_time = time.time()
+        execution_time = round(end_time - start_time, 2)
+        logger.error(f"Analysis failed after {execution_time} seconds: {str(e)}")
+        return f"Analysis failed: {str(e)}"
+
