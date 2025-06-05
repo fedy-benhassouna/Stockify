@@ -176,12 +176,24 @@ class YahooFinanceStockNewsScraper:
 }
 
                 
-                # Get image URL if available
+                # Get image URL if available, otherwise use a random default image
+                default_images = [
+                    "https://s.yimg.com/ny/api/res/1.2/JxL9.0xNg7f9krljH7d4NA--/YXBwaWQ9aGlnaGxhbmRlcjt3PTk2MDtoPTU5MDtjZj13ZWJw/https://media.zenfs.com/en/coindesk_75/4c28b0f43fae0efb59246f499c318734",
+                    "https://s.yimg.com/ny/api/res/1.2/PmVoZe_Q_pEHipzsRASVDw--/YXBwaWQ9aGlnaGxhbmRlcjt3PTk2MDtoPTc5NztjZj13ZWJw/https://media.zenfs.com/en/schaeffers_investment_research_24/87520bff28a27dddbc87a199813a45e4",
+                    "https://s.yimg.com/ny/api/res/1.2/smvyJMz4zaQhjrVuk.7Dbg--/YXBwaWQ9aGlnaGxhbmRlcjt3PTk2MDtoPTU5MDtjZj13ZWJw/https://media.zenfs.com/en/coindesk_75/3e89817523d81e47bf7ea80988b1882c",
+                    "https://s.yimg.com/ny/api/res/1.2/yXq8y4VNkrtt.fdJW1cocw--/YXBwaWQ9aGlnaGxhbmRlcjt3PTk2MDtoPTU0MA--/https://media.zenfs.com/en/the_daily_upside_435/f5f7c2f0ae577e29c80d57e26a95f4a6"
+                ]
+
                 img_elem = item.select_one('img')
-                if img_elem:
-                    img_src = img_elem.get('src')
-                    if img_src:
-                        article_data['image_url'] = img_src
+                img_src = img_elem.get('src') if img_elem and img_elem.get('src') else None
+
+                if not img_src:
+                    import random
+                    img_src = random.choice(default_images)
+
+                article_data['image_url'] = img_src
+
+
                 
                 articles.append(article_data)
             
