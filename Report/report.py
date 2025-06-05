@@ -9,13 +9,15 @@ import pandas as pd
 import asyncio
 import concurrent.futures
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set environment variable for Google API
-os.environ["GOOGLE_API_KEY"] = "AIzaSyDdtq0l5VfOLUi7wSlH3IddSwwSkoyX5nM"
+os.environ["GOOGLE_API_KEY"] = "AIzaSyDWimihMUAOaosaOvzu4hI_56mfa-DYKdo"
 
 # Thread lock for shared resources
 data_lock = Lock()
@@ -104,20 +106,23 @@ def get_market_analysis(symbols):
 def get_company_info(symbol):
     try:
         logger.info(f"Fetching company info for {symbol}")
-        stock = yf.Ticker(symbol)
-        time.sleep(0.5)
+        stock = yf.Ticker(symbol)  # Create new Ticker instance for each symbol
         info = stock.get_info()
-        return {
+        result = {
+            "symbol": symbol,  # Store symbol for validation
             "name": info.get("longName", "N/A"),
             "sector": info.get("sector", "N/A"),
             "market_cap": info.get("marketCap", "N/A"),
-            "summary": info.get("longBusinessSummary", "N/A")[:500] + "..." if info.get("longBusinessSummary") else "N/A",  # Truncate summary
+            "summary": info.get("longBusinessSummary", "N/A")[:500] + "..." if info.get("longBusinessSummary") else "N/A"
         }
+        logger.debug(f"Company info for {symbol}: {result}")
+        return result
     except Exception as e:
         logger.error(f"Error fetching company info for {symbol}: {str(e)}")
         return {
+            "symbol": symbol,
             "name": "N/A",
-            "sector": "N/A", 
+            "sector": "N/A",
             "market_cap": "N/A",
             "summary": "N/A"
         }
@@ -125,13 +130,16 @@ def get_company_info(symbol):
 def get_company_news(symbol):
     try:
         logger.info(f"Fetching news for {symbol}")
-        stock = yf.Ticker(symbol)
+        stock = yf.Ticker(symbol)  # Create new Ticker instance
         news = stock.news[:3]  # Limit to 3 news items
-        time.sleep(0.5)
-        return news
+        news_summary = [{"title": item.get("title", "N/A"), "symbol": symbol} for item in news]
+        logger.debug(f"News for {symbol}: {news_summary}")
+        return news_summary
     except Exception as e:
         logger.error(f"Error fetching news for {symbol}: {str(e)}")
         return []
+
+
 
 company_researcher = Agent(
     model=Gemini(id="models/gemini-2.0-flash-001"),
@@ -145,11 +153,12 @@ def get_company_analysis(symbol):
         info = get_company_info(symbol)
         news = get_company_news(symbol)
         
-        # Limit news content to prevent recursion
-        news_summary = []
-        for item in news[:2]:  # Only take first 2 news items
-            if isinstance(item, dict) and 'title' in item:
-                news_summary.append(item['title'])
+        # Validate that the data corresponds to the correct symbol
+        if info["symbol"] != symbol:
+            logger.error(f"Symbol mismatch in company info: expected {symbol}, got {info['symbol']}")
+            return f"Error: Symbol mismatch for {symbol}"
+        
+        news_summary = [item["title"] for item in news if item["symbol"] == symbol][:2]
         
         prompt = (
             f"Provide a company analysis for {symbol}.\n"
@@ -157,43 +166,51 @@ def get_company_analysis(symbol):
             f"Sector: {info['sector']}\n"
             f"Market Cap: {info['market_cap']}\n"
             f"Business Summary: {info['summary']}\n"
-            f"Recent News Headlines: {'; '.join(news_summary[:2])}\n\n"
-            f"Provide a concise analysis covering business overview, sector position, and recent developments."
+            f"Recent News Headlines: {'; '.join(news_summary) if news_summary else 'N/A'}\n\n"
+            f"Provide a concise analysis covering business overview, sector position, and recent developments.\n"
+            f"Ensure the analysis is specific to {symbol}."
         )
         
-        logger.info(f"Calling company researcher for {symbol}...")
+        logger.debug(f"Prompt for {symbol}: {prompt[:200]}...")
         response = company_researcher.run(prompt)
+        response_text = str(response.content)
+        
+        # Validate that the response mentions the correct symbol
+        if symbol not in response_text and info["name"] not in response_text:
+            logger.error(f"Response for {symbol} does not mention the correct company")
+            return f"Error: Analysis for {symbol} appears invalid"
+        
         logger.info(f"Company analysis completed for {symbol}")
-        return str(response.content)
+        return response_text
     
     except Exception as e:
         logger.error(f"Error in company analysis for {symbol}: {str(e)}")
         return f"Error analyzing {symbol}: {str(e)}"
 
 def get_all_company_analyses(symbols):
-    """Get company analyses for all symbols in parallel"""
     try:
         logger.info(f"Starting parallel company analyses for {symbols}")
+        company_analyses = {}
         
-        # Use ThreadPoolExecutor to run company analyses in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(symbols), 5)) as executor:
-            # Submit all tasks
-            future_to_symbol = {
-                executor.submit(get_company_analysis, symbol): symbol 
-                for symbol in symbols
-            }
+        with ThreadPoolExecutor(max_workers=min(len(symbols), 5)) as executor:
+            future_to_symbol = {executor.submit(get_company_analysis, symbol): symbol for symbol in symbols}
             
-            # Collect results
-            company_analyses = {}
             for future in concurrent.futures.as_completed(future_to_symbol):
                 symbol = future_to_symbol[future]
                 try:
-                    analysis = future.result(timeout=60)  # 60 second timeout per analysis
+                    analysis = future.result(timeout=60)
                     company_analyses[symbol] = analysis
                     logger.info(f"Company analysis completed for {symbol}")
                 except Exception as e:
                     logger.error(f"Error in company analysis for {symbol}: {str(e)}")
                     company_analyses[symbol] = f"Error analyzing {symbol}: {str(e)}"
+        
+        # Validate uniqueness of analyses
+        analyses = [company_analyses[s] for s in symbols if not company_analyses[s].startswith("Error")]
+        if len(analyses) > 1 and len(set(analyses)) < len(analyses):
+            logger.error("Duplicate analyses detected")
+            for symbol in symbols:
+                company_analyses[symbol] = f"Error: Duplicate analysis detected for {symbol}"
         
         return company_analyses
     
@@ -239,6 +256,7 @@ def get_stock_recommendations(symbols, market_analysis=None, company_data=None):
         
         logger.info("Calling stock strategist...")
         recommendations = stock_strategist.run(prompt)
+        print(f"Recommendations for {symbols}:\n{recommendations.content}")
         logger.info("Stock recommendations completed")
         return str(recommendations.content)
     
@@ -332,7 +350,7 @@ def get_final_investment_report(symbols):
         for symbol, analysis in company_data.items():
             company_analyses.append(f"**{symbol}**: {analysis}")
 
-        # Create the complete report by combining all sections
+        # Create the complete report without the table
         complete_report = f"""# Stock Investment Report for {', '.join(symbols)}
 
 ## Section 1: Market Performance Overview
@@ -347,29 +365,27 @@ def get_final_investment_report(symbols):
 ## Section 4: Investment Opportunities Summary
 
 Based on the comprehensive analysis above, here is the investment ranking:
+"""
 
-| Stock Ticker | Investment Score (1-10) | Rationale |
-|--------------|-------------------------|-----------|"""
-
-        # Let the team lead only create the summary table
-        table_prompt = (
-            f"Based on the following complete analysis, create ONLY the summary table rows for the investment ranking.\n\n"
+        # Modified prompt to generate bulleted list instead of table
+        points_prompt = (
+            f"Based on the following complete analysis, create ONLY a bulleted list for the investment ranking.\n\n"
             f"Market Analysis: {market_analysis[:500]}...\n\n"
             f"Company Data: {str(list(company_data.values()))[:500]}...\n\n"
             f"Recommendations: {stock_recommendations[:500]}...\n\n"
-            f"For each stock ({', '.join(symbols)}), provide one table row with:\n"
+            f"For each stock ({', '.join(symbols)}), provide one bullet point with:\n"
             f"- Stock ticker\n"
             f"- Investment score (1-10, where 1=Strong Buy, 10=Strong Sell)\n"
             f"- Brief rationale (one sentence)\n\n"
-            f"Format as: | TICKER | SCORE | Rationale |\n"
-            f"Provide ONLY the table rows, no headers or extra text."
+            f"Format as: - TICKER: Investment Score: SCORE; Rationale: RATIONALE\n"
+            f"Provide ONLY the bulleted list, no extra text or headers."
         )
 
-        logger.info("Calling team lead for summary table...")
-        table_rows = team_lead.run(table_prompt)
+        logger.info("Calling team lead for summary points...")
+        points_list = team_lead.run(points_prompt)
         
-        # Combine the complete report with the table
-        final_report = complete_report + "\n" + str(table_rows.content) + "\n\n**Disclaimer:** This analysis is for informational purposes only and should not be considered as financial advice. Please consult with a qualified financial advisor before making investment decisions."
+        # Combine the complete report with the bulleted list
+        final_report = complete_report + "\n" + str(points_list.content) + "\n\n**Disclaimer:** This analysis is for informational purposes only and should not be considered as financial advice. Please consult with a qualified financial advisor before making investment decisions."
         
         logger.info("Final report generation completed")
         return final_report
