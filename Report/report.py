@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set environment variable for Google API
-os.environ["GOOGLE_API_KEY"] = "AIzaSyDWimihMUAOaosaOvzu4hI_56mfa-DYKdo"
+google_api_key = os.getenv("GOOGLE_API_KEY")
 
 # Thread lock for shared resources
 data_lock = Lock()
