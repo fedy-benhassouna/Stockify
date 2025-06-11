@@ -4,9 +4,8 @@
   <img src="https://github.com/user-attachments/assets/bcfe9f18-ca5e-45d0-a9c5-2b25554782db" alt="Stockify Logo" width="400"/>
 </p>
 
-
 <p align="center">
-  A sophisticated platform for stock market analysis, investment tracking, and financial news aggregation
+  A next-generation AI-powered platform for intelligent stock analysis, financial news aggregation, and personalized investment reporting.
 </p>
 
 <p align="center">
@@ -15,136 +14,82 @@
   <a href="#news-scraper">News Scraper</a> •
   <a href="#multi-agent-system">Multi-Agent System</a> •
   <a href="#api-layer">API Layer</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#roadmap">Roadmap</a> •
-  <a href="#contributing">Contributing</a> •
-  <a href="#license">License</a>
+
 </p>
+
+---
 
 ## Features
 
-- **Real-time Stock Data**: Access up-to-date market information
-- **Portfolio Management**: Track and analyze your investments
-- **Financial News Aggregation**: Stay informed with the latest market news
-- **Automated Analysis**: Leverage AI to gain insights into market trends
-- **Multi-Agent Architecture**: Distributed system for efficient data processing
-- **RESTful API**: Access Stockify's features programmatically
+- 📈 **Real-Time Stock Data**: Fetch historical and real-time data using Yahoo Finance.
+- 📊 **Dynamic Visualization**: Interactive candlestick charts with zoom, pan, tooltips, and export options.
+- 📰 **News Aggregation**: Collects and analyzes financial news from multiple sources using NLP.
+- 🧠 **AI & LLM Integration**: Combines traditional metrics with LLM-powered narrative analysis.
+- 🤖 **Multi-Agent System**: Specialized agents handle data analysis, research, and reporting.
+- 📄 **Custom Investment Reports**: Automated generation of reports using markdown and PDF export.
+- 🌐 **RESTful API**: Built with FastAPI for efficient frontend-backend communication.
+- 🧪 **Modular React Frontend**: Includes Stock Reports, Visualization, and News modules.
+
+---
 
 ## Architecture
 
-Stockify is built using a modern, scalable architecture:
-![System Architecture](https://github.com/user-attachments/assets/be4d3009-37bf-4c00-8296-7c8925d192be)
+Stockify is structured for modularity and scalability:
 
+- **Frontend**: React.js SPA with modular components.
+- **Backend**: FastAPI handles business logic and serves RESTful APIs.
+- **Data Layer**: Integrates `yfinance` for stock data and a custom news scraper.
+- **Agents**: Multi-agent system synthesizes data into investment-grade reports.
+- **LLMs**: Gemini and similar models are used for natural language understanding and summarization.
 
+![System Architecture](https://github.com/user-attachments/assets/fe5db5b1-9aed-41d5-9759-e736d1cff294)
+
+---
 
 ## News Scraper
 
-The news scraper module is responsible for collecting and processing financial news articles from various sources to provide users with relevant market information.
+The custom news scraper collects and analyzes market-moving news.
+
+![ News Web Scrapper ](https://github.com/user-attachments/assets/da9a2fed-c65f-41a5-8424-fe0fffb6fa72)
+
+
 
 ### Key Features
 
-- Multi-source aggregation (Bloomberg, CNBC, Reuters, etc.)
-- NLP-based sentiment analysis
-- Automatic categorization of news articles
-- Relevance scoring based on portfolio holdings
+- Aggregates real-time news using Yahoo Finance.
+- NLP-based sentiment scoring and entity tagging.
+- News relevance ranked against user portfolio.
+- External link support for full article access.
 
-[RESERVED FOR NEWS SCRAPER DETAILS & DIAGRAM]
+---
 
 ## Multi-Agent System
 
-Stockify employs a sophisticated multi-agent architecture to distribute workloads and enhance performance.
+Stockify features a distributed multi-agent system to break down complex tasks.
+
+![Multi-Agent System](https://github.com/user-attachments/assets/7ce3c760-eb84-4b75-bc33-b41af07ee3bf)
+
 
 ### Agent Types
 
-- Data Collection Agents
-- Analysis Agents
-- Recommendation Agents
-- User Interaction Agents
+- 🧮 **Market Analyst Agent**: Analyzes and ranks stock performance using historical data.
+- 🏢 **Company Researcher Agent**: Extracts company profiles, financials, and events.
+- 🎯 **Stock Strategist Agent**: Delivers insights and recommendations.
+- 🧩 **Team Lead Agent**: Synthesizes insights into coherent, actionable reports.
 
-[RESERVED FOR MULTI-AGENT DIAGRAM]
+Each agent runs independently and contributes to a structured investment summary.
+
+---
 
 ## API Layer
 
-The `app_final` API serves as the central communication hub for all Stockify components, providing both internal services and external endpoints.
+A robust FastAPI-based backend powers all data flow.
 
-### Endpoints
+### Main Endpoints
+- GET /api/v1/data - Retrieve list of tracked stocks
+- GET /api/v1/news - Fetch aggregated and scored news
+- GET /api/v1/generate-report - Create investment reports based on agent output
 
-```
-GET /api/v1/stocks           - List available stocks
-GET /api/v1/stocks/:symbol   - Get specific stock data
-POST /api/v1/portfolio       - Manage user portfolio
-GET /api/v1/news             - Get latest financial news
-GET /api/v1/insights         - Get AI-generated market insights
-```
+![Main Endpoints](https://github.com/user-attachments/assets/214a77fb-c38b-4466-a882-9eeda061114d)
 
-[RESERVED FOR API LAYER DOCUMENTATION]
 
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/fedy-benhassouna/Stockify.git
-cd Stockify
-
-# Install dependencies
-npm install
-
-# Configure environment
-cp .env.example .env
-# Edit .env file with your configuration
-
-# Start the application
-npm start
-```
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Start the application in development mode
-npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
-```
-
-### API Usage Example
-
-```javascript
-// Example code to interact with the Stockify API
-const response = await fetch('https://api.stockify.com/v1/stocks/AAPL');
-const appleStock = await response.json();
-console.log(`Current price: $${appleStock.price}`);
-```
-
-## Roadmap
-
-- [ ] Mobile application
-- [ ] Advanced predictive analytics
-- [ ] Social trading features
-- [ ] Cryptocurrency integration
-- [ ] Portfolio optimization tools
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-```
-
-## Contact
-
-For questions or support, please contact [fedy-benhassouna](https://github.com/fedy-benhassouna).
